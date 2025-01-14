@@ -16,6 +16,13 @@ Fracdiff features super-fast computation and scikit-learn compatible API.
 
 ![spx](./examples/fig/spx.png)
 
+## Fork Information
+
+This repository is a fork of the original [fracdiff](https://github.com/fracdiff/fracdiff) library. The following modifications have been made:
+
+- Added support for `torch.Tensor` and `torch.nn.Parameter` to enable differentiable fractional differentiation in PyTorch and optimization of the differentiation order using gradient-based optimization.
+- Implemented support for fractional differentiation along any dimension, not just the last dimension.
+
 ## What is fractional differentiation?
 
 See [M. L. Prado, "Advances in Financial Machine Learning"][prado].
@@ -159,21 +166,21 @@ The result for Nikkei 225 index historical price looks like this:
 
 ### PyTorch API
 
-One can fracdiff a PyTorch tensor. One can enjoy strong GPU acceleration.
+One can perform fractional differentiation on a PyTorch tensor and enjoy strong GPU acceleration. The library supports differentiable fractional differentiation and optimization of the differentiation order using gradient-based optimization.
 
-```py
+```python
 from fracdiff.torch import fdiff
 
 input = torch.tensor(...)
-output = fdiff(input, 0.5)
+output = fdiff(input, torch.tensor(0.5), dim=-1)
 ```
 
-```py
+```python
 from fracdiff.torch import Fracdiff
 
-module = Fracdiff(0.5)
+module = Fracdiff(torch.tensor(0.5), dim=-1)
 module
-# Fracdiff(0.5, dim=-1, window=10, mode='same')
+# Fracdiff(tensor(0.5), dim=-1, window=10, mode='same')
 
 input = torch.tensor(...)
 output = module(input)
