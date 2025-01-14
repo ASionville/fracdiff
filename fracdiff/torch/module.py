@@ -1,7 +1,6 @@
 from typing import Optional
 
 import torch
-from torch import Tensor
 from torch.nn import Module
 
 from . import functional
@@ -11,7 +10,7 @@ class Fracdiff(Module):
     """A ``torch.nn.Module`` to compute fractional differentiation.
 
     Args:
-        d (float): The order of differentiation.
+        d (float or torch.Tensor): The order of differentiation.
         dim (int, default=-1): The dimension to differentiate.
             Currently, only the last dimension is supported.
         window (int, default=10): The window size for fractional differentiation.
@@ -37,17 +36,17 @@ class Fracdiff(Module):
     """
 
     def __init__(
-        self, d: float, dim: int = -1, window: int = 10, mode: str = "same"
+        self, d: float | torch.Tensor, dim: int = -1, window: int = 10, mode: str = "same"
     ) -> None:
         super().__init__()
-        self.d = d
+        self.d = d if isinstance(d, torch.Tensor) else torch.tensor(d)
         self.dim = dim
         self.window = window
         self.mode = mode
 
     def extra_repr(self) -> str:
         params = (
-            str(self.d),
+            str(self.d.item()),
             f"dim={self.dim}",
             f"window={self.window}",
             f"mode='{self.mode}'",
@@ -56,10 +55,10 @@ class Fracdiff(Module):
 
     def forward(
         self,
-        input: Tensor,
-        prepend: Optional[Tensor] = None,
-        append: Optional[Tensor] = None,
-    ) -> Tensor:
+        input: torch.Tensor,
+        prepend: Optional[torch.Tensor] = None,
+        append: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Apply fractional differentiation.
 
         Args:

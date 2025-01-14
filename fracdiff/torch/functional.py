@@ -6,11 +6,11 @@ from torch import Tensor
 from fracdiff.fdiff import fdiff_coef as fdiff_coef_numpy
 
 
-def fdiff_coef(d: float, window: int) -> Tensor:
+def fdiff_coef(d: Tensor, window: int) -> Tensor:
     """Returns sequence of coefficients in fracdiff operator.
 
     Args:
-        d (float): Order of differentiation.
+        d (Tensor): Order of differentiation.
         window (int): Number of terms.
 
     Returns:
@@ -19,19 +19,23 @@ def fdiff_coef(d: float, window: int) -> Tensor:
     Examples:
         >>> from fracdiff.torch import fdiff_coef
         >>>
-        >>> fdiff_coef(0.5, 4)
+        >>> fdiff_coef(torch.tensor(0.5), 4)
         tensor([ 1.0000, -0.5000, -0.1250, -0.0625], dtype=torch.float64)
-        >>> fdiff_coef(1.0, 4)
+        >>> fdiff_coef(torch.tensor(1.0), 4)
         tensor([ 1., -1.,  0., -0.], dtype=torch.float64)
-        >>> fdiff_coef(1.5, 4)
+        >>> fdiff_coef(torch.tensor(1.5), 4)
         tensor([ 1.0000, -1.5000,  0.3750,  0.0625], dtype=torch.float64)
     """
-    return torch.as_tensor(fdiff_coef_numpy(d, window))
+    coefs = [torch.tensor(1.0, dtype=d.dtype, device=d.device)]
+    for k in range(1, window):
+        coef = coefs[-1] * (d - k + 1) / k
+        coefs.append(coef)
+    return torch.stack(coefs)
 
 
 def fdiff(
     input: Tensor,
-    n: float,
+    n: Tensor,
     dim: int = -1,
     prepend: Optional[Tensor] = None,
     append: Optional[Tensor] = None,
@@ -60,37 +64,36 @@ def fdiff(
         >>> from fracdiff.torch import fdiff
         ...
         >>> input = torch.tensor([1, 2, 4, 7, 0])
-        >>> fdiff(input, 0.5, mode="same", window=3)
+        >>> fdiff(input, torch.tensor(0.5), mode="same", window=3)
         tensor([ 1.0000,  1.5000,  2.8750,  4.7500, -4.0000])
 
-        >>> fdiff(input, 0.5, mode="valid", window=3)
+        >>> fdiff(input, torch.tensor(0.5), mode="valid", window=3)
         tensor([ 2.8750,  4.7500, -4.0000])
 
-        >>> fdiff(input, 0.5, mode="valid", window=3, prepend=[1, 1])
+        >>> fdiff(input, torch.tensor(0.5), mode="valid", window=3, prepend=[1, 1])
         tensor([ 0.3750,  1.3750,  2.8750,  4.7500, -4.0000])
 
         >>> input = torch.arange(10).reshape(2, 5)
-        >>> fdiff(input, 0.5)
+        >>> fdiff(input, torch.tensor(0.5))
         tensor([[0.0000, 1.0000, 1.5000, 1.8750, 2.1875],
                 [5.0000, 3.5000, 3.3750, 3.4375, 3.5547]])
     """
     # Calls torch.diff if n is an integer
-    if isinstance(n, int) or n.is_integer():
-        return input.diff(n=int(n), dim=dim, prepend=prepend, append=append)
-
-    if dim != -1:
-        # TODO(simaki): Implement dim != -1. PR welcomed!
-        raise ValueError("Only supports dim == -1.")
+    if isinstance(n, int) or (isinstance(n, torch.Tensor) and n.item().is_integer()):
+        return input.diff(n=int(n.item()), dim=dim, prepend=prepend, append=append)
 
     if not input.is_floating_point():
         input = input.to(torch.get_default_dtype())
+
+    if dim != -1:
+        input = input.transpose(dim, -1)
 
     combined = []
     if prepend is not None:
         prepend = torch.as_tensor(prepend).to(input)
         if prepend.dim() == 0:
             size = list(input.size())
-            size[dim] = 1
+            size[-1] = 1
             prepend = prepend.broadcast_to(torch.Size(size))
         combined.append(prepend)
 
@@ -100,19 +103,18 @@ def fdiff(
         append = torch.as_tensor(append).to(input)
         if append.dim() == 0:
             size = list(input.size())
-            size[dim] = 1
+            size[-1] = 1
             append = append.broadcast_to(torch.Size(size))
         combined.append(append)
 
     if len(combined) > 1:
-        input = torch.cat(combined, dim=dim)
+        input = torch.cat(combined, dim=-1)
 
     input_size = input.size()
     input = input.reshape(input[..., 0].numel(), 1, input_size[-1])
     input = torch.nn.functional.pad(input, (window - 1, 0))
 
-    # TODO(simaki): PyTorch Implementation to create weight
-    weight = fdiff_coef(n, window).to(input).reshape(1, 1, -1).flip(-1)
+    weight = fdiff_coef(n, window).reshape(1, 1, -1).flip(-1)
 
     output = torch.nn.functional.conv1d(input, weight)
 
@@ -126,6 +128,7 @@ def fdiff(
     output_size = input_size[:-1] + (size_lastdim,)
     output = output[..., -size_lastdim:].reshape(output_size)
 
-    output = output.transpose(dim, -1)
+    if dim != -1:
+        output = output.transpose(dim, -1)
 
     return output
